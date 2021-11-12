@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<title>three.js webgl - loaders - MMD loader</title>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+	<link type="text/css" rel="stylesheet" href="main.css">
+	<style>
+		body {
+			background-color: #fff;
+			color: #444;
+		}
+
+		a {
+			color: #08f;
+		}
+	</style>
+</head>
+
+<body>
+	<div id="info">
+	</div>
+
+	<script src="js/libs/ammo.wasm.js"></script>
+		<script src="scoreoutputer.min.js"></script>
+	<script>
+		// 建構子 ScoreOutputer 接受一個字串，該字串為 csv 的檔案名稱
+		// 以下面範例，檔名就為 "109598105(總分: 6).csv"
+		var so = new ScoreOutputer("110598022");
+		so.installCSS(function () {
+			// 安裝 bootstrap 的 css，如果在 html 上方引用 bootstrap 5.1.1 的話就不用使用 installCSS ，注意一定要 bootstrap css 5.1.1 版
+			// installCSS 接收一個 callback 當作參數，作為成功安裝 bootstrap css 的回呼函式
+
+			//加入項目，分數，完成狀況
+			//第一個參數為 項目名稱
+			//第2個參數為 項目分數
+			//第3個參數為 完成狀況，有完成 true/未完成 false
+			//有幾個項目就呼叫幾個 addChild
+			//addChild 要比 renderModal 先呼叫
+			so.addChild("繪製出 5 個畫面", 1, true);
+			so.addChild("回答問題", 1, true);
+			so.addChild("可按鍵選擇上 / 下一隻角色", 1, true);
+			so.addChild("讀取作業 2 儲存的座標點在眼睛上繪製出分割線", 1, true);
+			so.addChild("可選擇當下控制哪個虹膜", 1, true);
+			so.addChild("按滑鼠左鍵控制虹膜移動，右鍵停止", 2, true);
+			so.addChild("複製參數至對應目標參數", 2, true);
+			so.addChild("可儲存虹膜轉動角度", 1, true);
+
+			//產生自評表，參數如下所示
+			so.renderModal(
+				//1. 自評表插入位置 (預設 document.body)
+				document.body,
+				//2. 自評表背景 (預設紅色)
+				'rgba(100,45,58,1)',
+				//3. 自評表文字顏色 (預設白色)
+				'white',
+				//4. 自評表文字大小 (預設 14pt)
+				'15pt',
+				//5. 自評表 checkbox 文字大小 (預設多少忘了)
+				'15px',
+				//6. 自評表標題 (預設 "自我評分表")
+				dialogTitle = "自我評分表"
+			);
+
+			//設定下載按鈕 <-- 一定要呼叫這個函數，不然沒有下載功能
+			so.installDownloadBtn();
+
+			//產生 "開啟自評表按鈕"
+			so.renderBtn(
+				//自評表按鈕插入位置
+				document.querySelector("#info"),
+				//自評表按鈕文字
+				"開啟自評表"
+			);
+		});
+	</script>
+	<script type="module">
+
+		import * as THREE from './build/three.module.js';
+		import { GUI } from './jsm/libs/dat.gui.module.js';
+		import { OutlineEffect } from './jsm/effects/OutlineEffect.js';
+		import { MMDLoader } from './jsm/loaders/MMDLoader.js';
+
+		let camera, camera2, camera3, camera4, camera5;
+		let SCREEN_WIDTH = window.innerWidth;
+		let SCREEN_HEIGHT = window.innerHeight;
+		let aspect = SCREEN_WIDTH / SCREEN_HEIGHT;
+		let frustumSize = 30;
+		let scene, renderer, effect;
+		let mesh;
+		let Left_eye_group = new THREE.Group();
+		let Right_eye_group = new THREE.Group();
+		let X_range, Y_range;
+	
+		let eye_mode = 0;
+		let right_eye_bone_index = 0;
+		let left_eye_bone_index = 0;
+		let data_json, data_json_length;
+		let model_count = 0;
+		let loadstatus = 0;
+		let mouse_temp_x, mouse_temp_y;
+		let mouse_move_flag = 0;
+		let X_Right_neg_angle, X_Left_neg_angle, X_Right_pos_angle, X_Left_pos_angle;
+		let Y_Right_neg_angle, Y_Left_neg_angle, Y_Right_pos_angle, Y_Left_pos_angle;
+		let offset = 0;
+		let eyeoffset = 0;
+		let set_end = 0;
+		Ammo().then(function (AmmoLib) {
+
+			Ammo = AmmoLib;
+			getjsonfile();
+			animate();
+
+		});
+		function getjsonfile() {
+			var xmlhttp = new XMLHttpRequest();
+			var url = "model_data.json";
+			xmlhttp.onreadystatechange = function () {
+				if (this.readyState == 4 && this.status == 200) {
+					data_json = JSON.parse(this.responseText);
+					data_json_length = Object.keys(data_json.modellist).length - 1;
+					init();
+					drawLine();
+					Init_eyeangle();
+				}
+			};
+			xmlhttp.open("GET", url, true);
+			xmlhttp.send();
+		
+		}
+		
+		
+
+		var body = document.body;
+				//獲取滑鼠位置
+				function getPosition(e) {
+			
+			var mouseWorld = new THREE.Vector3();
+			const { left, top, width, height } = e.currentTarget.getBoundingClientRect();
+			mouseWorld.set(
+				((e.clientX - left + 1) / width) * 2 - 1,
+				-((e.clientY - top + 1) / height) * 2 + 1,
+				(camera.near + camera.far) / (camera.near - camera.far),
+			);
+			mouseWorld.unproject(camera);
+			//
+			if (mouse_move_flag == 1) {
+
+				if (eye_mode == 0) {
+					X_Right_neg_angle = (mouse_temp_y - e.clientY) / 10;
+				}
+				else if (eye_mode == 1) {
+					X_Left_neg_angle = (mouse_temp_y - e.clientY) / 10;
+				}
+				else if (eye_mode == 2) {
+					X_Right_pos_angle = (mouse_temp_y - e.clientY) / 10;
+				}
+				else if (eye_mode == 3) {
+					X_Left_pos_angle = (mouse_temp_y - e.clientY) / 10;
+				}
+				else if (eye_mode == 4) {
+					Y_Right_neg_angle = (mouse_temp_x - e.clientX) / 10;
+				}
+				else if (eye_mode == 5) {
+					Y_Left_neg_angle = (mouse_temp_x - e.clientX) / 10;
+				}
+				else if (eye_mode == 6) {
+					Y_Right_pos_angle = (mouse_temp_x - e.clientX) / 10;
+				}
+				else if (eye_mode == 7) {
+					Y_Left_pos_angle = (mouse_temp_x - e.clientX) / 10;
+				}
+			}
+			document.onclick = function () {
+				mouse_temp_x = e.clientX;
+				mouse_temp_y = e.clientY;
+				mouse_move_flag = 1;
+			}
+			document.oncontextmenu = function (e) {
+				return false;
+			}
+			document.body.onmouseup = function (ev) {
+				if (ev.button == 2) {//右鍵
+					mouse_move_flag = 0;
+					save_eyeangle();
+				}
+
+
+			}
+		}
+		body.addEventListener('mousemove', getPosition, false);
+
+
+		//按鍵輸入
+		function goRocket(e) {
+			if (e.keyCode == 81) {//Q
+				if (eye_mode == 0) {
+					eye_mode = 1;
+					offset = 0;
+					camera.position.x = -eyeoffset;
+					mouse_move_flag = 0;
+					X_Left_neg_angle = X_Right_neg_angle;
+
+				}
+				else if (eye_mode == 2) {
+					eye_mode = 3;
+					offset = 5;
+					camera.position.x = -eyeoffset + offset;
+					mouse_move_flag = 0;
+					X_Left_pos_angle = X_Right_pos_angle;
+
+				}
+				else if (eye_mode == 4) {
+					eye_mode = 7;
+					offset = 15;
+					camera.position.x = -eyeoffset + offset;
+					mouse_move_flag = 0;
+					Y_Left_pos_angle = -Y_Right_neg_angle;
+				}
+				else if (eye_mode == 6) {
+					eye_mode = 5;
+					offset = 10;
+					camera.position.x = -eyeoffset + offset;
+					mouse_move_flag = 0;
+					Y_Left_neg_angle = -Y_Right_pos_angle;
+				}
+				camera.updateProjectionMatrix();
+				drawLine();
+				save_eyeangle();
+
+			}
+			if (e.keyCode == 65) {//A
+				eye_mode = 0;
+				offset = 0;
+				savelocation(0);
+				drawLine();
+			}
+			if (e.keyCode == 68) {//D
+				eye_mode = 0;
+				offset = 0;
+				savelocation(1);
+				drawLine();
+			}
+			if (e.keyCode == 83) { //s save
+				mouse_move_flag = 0;
+				const a = document.createElement("a");
+				a.href = URL.createObjectURL(new Blob([JSON.stringify(data_json, null, 2)], {
+					type: "json/plain"
+				}));
+				a.setAttribute("download", "model_data.json");
+				document.body.appendChild(a);
+				a.click();
+				document.body.removeChild(a);
+			}
+			if (e.keyCode == 97) {//1
+				mouse_move_flag = 0;
+				if (eye_mode > 0) {
+					eye_mode -= 1;
+					if (eye_mode == 0) {
+						offset = 0;
+						camera.position.x = eyeoffset;
+					}
+					else if (eye_mode == 1) {
+						offset = 0;
+						camera.position.x = -eyeoffset;
+					}
+					else if (eye_mode == 2) {
+						offset = 5;
+						camera.position.x = eyeoffset + offset;
+					}
+					else if (eye_mode == 3) {
+						offset = 5;
+						camera.position.x = -eyeoffset + offset;
+					}
+					else if (eye_mode == 4) {
+						offset = 10;
+						camera.position.x = eyeoffset + offset;
+					}
+					else if (eye_mode == 5) {
+						offset = 10;
+						camera.position.x = -eyeoffset + offset;
+					}
+					else if (eye_mode == 6) {
+						offset = 15;
+						camera.position.x = eyeoffset + offset;
+					}
+					else if (eye_mode == 7) {
+						offset = 15;
+						camera.position.x = -eyeoffset + offset;
+					}
+					camera.updateProjectionMatrix();
+					console.log(camera.position.x);
+				}
+				else {
+					eye_mode = eye_mode;
+				}
+				console.log(eye_mode);
+				drawLine();
+			}
+			if (e.keyCode == 98) {//2
+				mouse_move_flag = 0;
+				if (eye_mode < 7) {
+					eye_mode += 1;
+					if (eye_mode == 0) {
+						offset = 0;
+						camera.position.x = eyeoffset;
+					}
+					else if (eye_mode == 1) {
+						offset = 0;
+						camera.position.x = -eyeoffset;
+					}
+					else if (eye_mode == 2) {
+						offset = 5;
+						camera.position.x = eyeoffset + offset;
+					}
+					else if (eye_mode == 3) {
+						offset = 5;
+						camera.position.x = -eyeoffset + offset;
+					}
+					else if (eye_mode == 4) {
+						offset = 10;
+						camera.position.x = eyeoffset + offset;
+					}
+					else if (eye_mode == 5) {
+						offset = 10;
+						camera.position.x = -eyeoffset + offset;
+					}
+					else if (eye_mode == 6) {
+						offset = 15;
+						camera.position.x = eyeoffset + offset;
+					}
+					else if (eye_mode == 7) {
+						offset = 15;
+						camera.position.x = -eyeoffset + offset;
+					}
+					camera.updateProjectionMatrix();
+					console.log(camera.position.x);
+				}
+				else {
+					eye_mode = eye_mode;
+				}
+				console.log(eye_mode);
+				drawLine();
+			}
+		}
+		body.addEventListener('keydown', goRocket, false) ;
+
+
+		
+		
+		function init() {
+
+			const container = document.createElement('div');
+			document.body.appendChild(container);
+			//鏡頭
+			var eyepos = new THREE.Vector3(0, (data_json.modellist[model_count].line_locationy_3 - data_json.modellist[model_count].line_locationy_2) / 2 + data_json.modellist[model_count].line_locationy_2, 30);
+			camera = new THREE.OrthographicCamera(0.5 * frustumSize * aspect / - 2, 0.5 * frustumSize * aspect / 2, frustumSize / 2, frustumSize / - 2, 0.1, 1000);
+			camera2 = new THREE.OrthographicCamera(0.25 * frustumSize * aspect / - 2, 0.25 * frustumSize * aspect / 2, 0.5 * frustumSize / 2, 0.5 * frustumSize / - 2, 0.1, 1000);
+			camera3 = new THREE.OrthographicCamera(0.25 * frustumSize * aspect / - 2, 0.25 * frustumSize * aspect / 2, 0.5 * frustumSize / 2, 0.5 * frustumSize / - 2, 0.1, 1000);
+			camera4 = new THREE.OrthographicCamera(0.25 * frustumSize * aspect / - 2, 0.25 * frustumSize * aspect / 2, 0.5 * frustumSize / 2, 0.5 * frustumSize / - 2, 0.1, 1000);
+			camera5 = new THREE.OrthographicCamera(0.25 * frustumSize * aspect / - 2, 0.25 * frustumSize * aspect / 2, 0.5 * frustumSize / 2, 0.5 * frustumSize / - 2, 0.1, 1000);
+			camera.position.z = 30;
+			camera2.position.z = 30;
+			camera3.position.z = 30;
+			camera4.position.z = 30;
+			camera5.position.z = 30;
+			updatecamera();
+			scene = new THREE.Scene();
+			const ambient = new THREE.AmbientLight(0x666666);
+			scene.add(ambient);
+
+			const directionalLight = new THREE.DirectionalLight(0x887766);
+			directionalLight.position.set(- 1, 1, 1).normalize();
+			scene.add(directionalLight);
+
+
+			renderer = new THREE.WebGLRenderer({ antialias: true });
+			renderer.setPixelRatio(window.devicePixelRatio);
+			renderer.setSize(window.innerWidth, window.innerHeight);
+			container.appendChild(renderer.domElement);
+			renderer.autoClear = false;
+
+			effect = new OutlineEffect(renderer);
+
+			// model
+
+			function onProgress(xhr) {
+
+				if (xhr.lengthComputable) {
+
+					const percentComplete = xhr.loaded / xhr.total * 100;
+					console.log(Math.round(percentComplete, 2) + '% downloaded');
+
+				}
+
+			}
+
+			const modelFile = data_json.modellist[model_count].location;
+			const loader = new MMDLoader();
+
+			loader.load(modelFile, function (object) {
+				mesh = object;
+				mesh.position.y = - 10;
+				scene.add(mesh);
+				function check_eyebone_index() {
+					for (let i = 0; i < mesh.skeleton.bones.length; i++) {
+						if (mesh.skeleton.bones[i].name == '左目') {
+							left_eye_bone_index = i;
+						}
+						else if (mesh.skeleton.bones[i].name == '右目') {
+							right_eye_bone_index = i;
+						}
+					}
+				}
+				check_eyebone_index();
+				loadstatus = 1;
+			}, onProgress, null);
+			//
+			window.addEventListener('resize', onWindowResize);
+		}
+		
+		function changemodel() {
+			Init_eyeangle();
+			eye_mode = 0;
+			function onProgress(xhr) {
+
+				if (xhr.lengthComputable) {
+
+					const percentComplete = xhr.loaded / xhr.total * 100;
+					console.log(Math.round(percentComplete, 2) + '% downloaded');
+
+				}
+
+			}
+			scene.remove(mesh);
+
+			const loader = new MMDLoader();
+			const modelFile = data_json.modellist[model_count].location;
+			loader.load(modelFile, function (object) {
+
+				mesh = object;
+				mesh.position.y = - 10;
+				scene.add(mesh);
+				function check_eyebone_index() {
+					for (let i = 0; i < mesh.skeleton.bones.length; i++) {
+						if (mesh.skeleton.bones[i].name == '左目') {
+							left_eye_bone_index = i;
+							console.log(left_eye_bone_index);
+						}
+						else if (mesh.skeleton.bones[i].name == '右目') {
+							right_eye_bone_index = i;
+						}
+					}
+				}
+				check_eyebone_index();
+			}, onProgress, null);
+			updatecamera();
+		}
+		function savelocation(mode) {
+			eye_mode = 0;
+			for (var i = Left_eye_group.children.length - 1; i >= 0; i--) {
+				Left_eye_group.remove(Left_eye_group.children[i]);
+			}
+			for (var i = Right_eye_group.children.length - 1; i >= 0; i--) {
+				Right_eye_group.remove(Right_eye_group.children[i]);
+			}
+			if (mode == 0) {
+				if (model_count == 0) {
+					set_end = 0;
+					model_count = model_count;
+				}
+				else if (set_end == 0) {
+					model_count -= 1;
+					changemodel();
+				}
+				else {
+					set_end = 0;
+					model_count -= 1;
+					changemodel();
+				}
+			}
+			if (mode == 1) {
+				if (model_count == data_json_length) {
+					set_end = 0;
+					model_count = model_count;
+				}
+				else if (set_end == 0) {
+					model_count += 1;
+					changemodel();
+				}
+				else {
+					set_end = 0;
+					model_count += 1;
+					changemodel();
+				}
+			}
+
+		}
+		function onWindowResize() {
+
+			SCREEN_WIDTH = window.innerWidth;
+			SCREEN_HEIGHT = window.innerHeight;
+			aspect = SCREEN_WIDTH / SCREEN_HEIGHT;
+
+			effect.setSize(SCREEN_WIDTH, SCREEN_HEIGHT);
+
+			camera.left = 0.5 * frustumSize * aspect / - 2;
+			camera.right = 0.5 * frustumSize * aspect / 2;
+			camera.top = frustumSize / 2;
+			camera.bottom = - frustumSize / 2;
+			camera.updateProjectionMatrix();
+
+			camera2.left = 0.25 * frustumSize * aspect / - 2;
+			camera2.right = 0.25 * frustumSize * aspect / 2;
+			camera2.top = 0.5 * frustumSize / 2;
+			camera2.bottom = - 0.5 * frustumSize / 2;
+			camera2.updateProjectionMatrix();
+
+			camera3.left = 0.25 * frustumSize * aspect / - 2;
+			camera3.right = 0.25 * frustumSize * aspect / 2;
+			camera3.top = 0.5 * frustumSize / 2;
+			camera3.bottom = - 0.5 * frustumSize / 2;
+			camera3.updateProjectionMatrix();
+
+			camera4.left = 0.25 * frustumSize * aspect / - 2;
+			camera4.right = 0.25 * frustumSize * aspect / 2;
+			camera4.top = 0.5 * frustumSize / 2;
+			camera4.bottom = - 0.5 * frustumSize / 2;
+			camera4.updateProjectionMatrix();
+
+			camera5.left = 0.25 * frustumSize * aspect / - 2;
+			camera5.right = 0.25 * frustumSize * aspect / 2;
+			camera5.top = 0.5 * frustumSize / 2;
+			camera5.bottom = - 0.5 * frustumSize / 2;
+			camera5.updateProjectionMatrix();
+
+
+
+		}
+		function animate() {
+
+			requestAnimationFrame(animate);
+			render();
+
+		}
+		function render() {
+
+			if (loadstatus == 1) {
+
+				effect.clear();
+
+
+				if (eye_mode == 0) {
+
+					offset = 0;
+					mesh.position.x = 0;
+					camera.position.x = eyeoffset;
+					mesh.skeleton.bones[right_eye_bone_index].rotation.x = -THREE.MathUtils.degToRad(X_Right_neg_angle);
+					mesh.skeleton.bones[right_eye_bone_index].rotation.y = 0;
+					mesh.skeleton.bones[left_eye_bone_index].rotation.y = 0;
+				}
+				else if (eye_mode == 1) {
+
+					offset = 0;
+					mesh.position.x = 0;
+					camera.position.x = -eyeoffset;
+					mesh.skeleton.bones[left_eye_bone_index].rotation.x = -THREE.MathUtils.degToRad(X_Left_neg_angle);
+					mesh.skeleton.bones[right_eye_bone_index].rotation.y = 0;
+					mesh.skeleton.bones[left_eye_bone_index].rotation.y = 0;
+				}
+				else if (eye_mode == 2) {
+
+					offset = 5;
+					mesh.position.x = 5;
+					camera.position.x = eyeoffset + offset;
+					mesh.skeleton.bones[right_eye_bone_index].rotation.x = -THREE.MathUtils.degToRad(X_Right_pos_angle);
+					mesh.skeleton.bones[right_eye_bone_index].rotation.y = 0;
+					mesh.skeleton.bones[left_eye_bone_index].rotation.y = 0;
+				}
+				else if (eye_mode == 3) {
+
+					offset = 5;
+					mesh.position.x = 5;
+					camera.position.x = -eyeoffset + offset;
+					mesh.skeleton.bones[left_eye_bone_index].rotation.x = -THREE.MathUtils.degToRad(X_Left_pos_angle);
+					mesh.skeleton.bones[right_eye_bone_index].rotation.y = 0;
+					mesh.skeleton.bones[left_eye_bone_index].rotation.y = 0;
+				}
+				else if (eye_mode == 4) {
+
+					offset = 10;
+					mesh.position.x = 10;
+					camera.position.x = eyeoffset + offset;
+					mesh.skeleton.bones[right_eye_bone_index].rotation.x = 0;
+					mesh.skeleton.bones[left_eye_bone_index].rotation.x = 0;
+					mesh.skeleton.bones[right_eye_bone_index].rotation.y = -THREE.MathUtils.degToRad(Y_Right_neg_angle);
+
+				}
+				else if (eye_mode == 5) {
+
+					offset = 10;
+					mesh.position.x = 10;
+					camera.position.x = -eyeoffset + offset;
+					mesh.skeleton.bones[right_eye_bone_index].rotation.x = 0;
+					mesh.skeleton.bones[left_eye_bone_index].rotation.x = 0;
+					mesh.skeleton.bones[left_eye_bone_index].rotation.y = -THREE.MathUtils.degToRad(Y_Left_neg_angle);
+				}
+				else if (eye_mode == 6) {
+
+					offset = 15;
+					mesh.position.x = 15;
+					camera.position.x = eyeoffset + offset;
+					mesh.skeleton.bones[right_eye_bone_index].rotation.x = 0;
+					mesh.skeleton.bones[left_eye_bone_index].rotation.x = 0;
+					mesh.skeleton.bones[right_eye_bone_index].rotation.y = -THREE.MathUtils.degToRad(Y_Right_pos_angle);
+				}
+				else if (eye_mode == 7) {
+
+					offset = 15;
+					mesh.position.x = 15;
+					camera.position.x = -eyeoffset + offset;
+					mesh.skeleton.bones[right_eye_bone_index].rotation.x = 0;
+					mesh.skeleton.bones[left_eye_bone_index].rotation.x = 0;
+					mesh.skeleton.bones[left_eye_bone_index].rotation.y = -THREE.MathUtils.degToRad(Y_Left_pos_angle);
+				}
+				effect.setViewport(0, 0, window.innerWidth / 2, window.innerHeight);
+				effect.render(scene, camera);
+
+				mesh.position.x = 0;
+				mesh.skeleton.bones[right_eye_bone_index].rotation.x = -THREE.MathUtils.degToRad(X_Right_neg_angle);
+				mesh.skeleton.bones[left_eye_bone_index].rotation.x = -THREE.MathUtils.degToRad(X_Left_neg_angle);
+				mesh.skeleton.bones[right_eye_bone_index].rotation.y = 0;
+				mesh.skeleton.bones[left_eye_bone_index].rotation.y = 0;
+				effect.setViewport(window.innerWidth / 2, window.innerHeight / 2, window.innerWidth / 4, window.innerHeight / 2);
+				effect.render(scene, camera2);
+
+				mesh.position.x = 5;
+				mesh.skeleton.bones[right_eye_bone_index].rotation.x = -THREE.MathUtils.degToRad(X_Right_pos_angle);
+				mesh.skeleton.bones[left_eye_bone_index].rotation.x = -THREE.MathUtils.degToRad(X_Left_pos_angle);
+				mesh.skeleton.bones[right_eye_bone_index].rotation.y = 0;
+				mesh.skeleton.bones[left_eye_bone_index].rotation.y = 0;
+				effect.setViewport(window.innerWidth / 2 + window.innerWidth / 4, window.innerHeight / 2, window.innerWidth / 4, window.innerHeight / 2);
+				effect.render(scene, camera3);
+
+				mesh.position.x = 10;
+				mesh.skeleton.bones[right_eye_bone_index].rotation.x = 0;
+				mesh.skeleton.bones[left_eye_bone_index].rotation.x = 0;
+				mesh.skeleton.bones[right_eye_bone_index].rotation.y = -THREE.MathUtils.degToRad(Y_Right_neg_angle);
+				mesh.skeleton.bones[left_eye_bone_index].rotation.y = -THREE.MathUtils.degToRad(Y_Left_neg_angle);
+				effect.setViewport(window.innerWidth / 2, 0, window.innerWidth / 4, window.innerHeight / 2);
+				effect.render(scene, camera4);
+
+				mesh.position.x = 15;
+				mesh.skeleton.bones[right_eye_bone_index].rotation.x = 0;
+				mesh.skeleton.bones[left_eye_bone_index].rotation.x = 0;
+				mesh.skeleton.bones[right_eye_bone_index].rotation.y = -THREE.MathUtils.degToRad(Y_Right_pos_angle);
+				mesh.skeleton.bones[left_eye_bone_index].rotation.y = -THREE.MathUtils.degToRad(Y_Left_pos_angle);
+				effect.setViewport(window.innerWidth / 2 + window.innerWidth / 4, 0, window.innerWidth / 4, window.innerHeight / 2);
+				effect.render(scene, camera5);
+
+			}
+		}
+		function drawLine() {
+			if (eye_mode % 2 == 1) {
+				for (var i = Left_eye_group.children.length - 1; i >= 0; i--) {
+					Left_eye_group.remove(Left_eye_group.children[i]);
+				}
+				for (var i = Right_eye_group.children.length - 1; i >= 0; i--) {
+					Right_eye_group.remove(Right_eye_group.children[i]);
+				}
+				scene.remove(Right_eye_group);
+				const material = [];
+				X_range = data_json.modellist[model_count].line_locationx_4 - data_json.modellist[model_count].line_locationx_1;
+				Y_range = data_json.modellist[model_count].line_locationy_3 - data_json.modellist[model_count].line_locationy_2;
+				X_range = X_range / 8;
+				Y_range = Y_range / 4;
+				let sum = 0;
+				for (let i = 0; i < 9; i++) {
+					const points = [];
+					if (i == 0) {
+						points.push(new THREE.Vector3(data_json.modellist[model_count].line_locationx_1 + offset, data_json.modellist[model_count].line_locationy_1 + 0.75, 20));
+						points.push(new THREE.Vector3(data_json.modellist[model_count].line_locationx_1 + offset, data_json.modellist[model_count].line_locationy_1 - 0.75, 20));
+					}
+					else if (i == 1) {
+						sum = X_range;
+						points.push(new THREE.Vector3(data_json.modellist[model_count].line_locationx_1 + sum + offset, data_json.modellist[model_count].line_locationy_1 + 0.75, 20));
+						points.push(new THREE.Vector3(data_json.modellist[model_count].line_locationx_1 + sum + offset, data_json.modellist[model_count].line_locationy_1 - 0.75, 20));
+					}
+					else {
+						sum = sum + X_range;
+						points.push(new THREE.Vector3(data_json.modellist[model_count].line_locationx_1 + sum + offset, data_json.modellist[model_count].line_locationy_1 + 0.75, 20));
+						points.push(new THREE.Vector3(data_json.modellist[model_count].line_locationx_1 + sum + offset, data_json.modellist[model_count].line_locationy_1 - 0.75, 20));
+					}
+					material[0] = new THREE.LineBasicMaterial({ color: 0xff0000 });
+					const geometry = new THREE.BufferGeometry().setFromPoints(points);
+					const line = new THREE.Line(geometry, material[0]);
+					scene.add(line);
+					Left_eye_group.add(line);
+					scene.add(Left_eye_group);
+				}
+				for (let i = 0; i < 5; i++) {
+					const points = [];
+					if (i == 0) {
+						points.push(new THREE.Vector3(0 + offset, data_json.modellist[model_count].line_locationy_2, 20));
+						points.push(new THREE.Vector3(1.5 + offset, data_json.modellist[model_count].line_locationy_2, 20));
+					}
+					else if (i == 1) {
+						sum = Y_range;
+						points.push(new THREE.Vector3(0 + offset, data_json.modellist[model_count].line_locationy_2 + sum, 20));
+						points.push(new THREE.Vector3(1.5 + offset, data_json.modellist[model_count].line_locationy_2 + sum, 20));
+					}
+					else {
+						sum = sum + Y_range;
+						points.push(new THREE.Vector3(0 + offset, data_json.modellist[model_count].line_locationy_2 + sum, 20));
+						points.push(new THREE.Vector3(1.5 + offset, data_json.modellist[model_count].line_locationy_2 + sum, 20));
+					}
+					material[1] = new THREE.LineBasicMaterial({ color: 0x05ec00 });
+					const geometry = new THREE.BufferGeometry().setFromPoints(points);
+					const line = new THREE.Line(geometry, material[1]);
+					Left_eye_group.add(line);
+					scene.add(Left_eye_group);
+				}
+
+			}
+			else {
+
+				for (var i = Left_eye_group.children.length - 1; i >= 0; i--) {
+					Left_eye_group.remove(Left_eye_group.children[i]);
+				}
+				for (var i = Right_eye_group.children.length - 1; i >= 0; i--) {
+					Right_eye_group.remove(Right_eye_group.children[i]);
+				}
+				scene.remove(Left_eye_group);
+				const material = [];
+				X_range = data_json.modellist[model_count].line_locationx_4 - data_json.modellist[model_count].line_locationx_1;
+				Y_range = data_json.modellist[model_count].line_locationy_3 - data_json.modellist[model_count].line_locationy_2;
+				X_range = X_range / 8;
+				Y_range = Y_range / 4;
+				let sum = 0;
+				for (let i = 0; i < 9; i++) {
+					const points = [];
+					if (i == 0) {
+						points.push(new THREE.Vector3(-data_json.modellist[model_count].line_locationx_1 + offset, data_json.modellist[model_count].line_locationy_1 +0.75, 20));
+						points.push(new THREE.Vector3(-data_json.modellist[model_count].line_locationx_1 + offset, data_json.modellist[model_count].line_locationy_1 -0.75 , 20));
+					}
+					else if (i == 1) {
+						sum = X_range;
+						points.push(new THREE.Vector3(-data_json.modellist[model_count].line_locationx_1 - sum + offset, data_json.modellist[model_count].line_locationy_1 + 0.75, 20));
+						points.push(new THREE.Vector3(-data_json.modellist[model_count].line_locationx_1 - sum + offset, data_json.modellist[model_count].line_locationy_1 - 0.75, 20));
+					}
+					else {
+						sum = sum + X_range;
+						points.push(new THREE.Vector3(-data_json.modellist[model_count].line_locationx_1 - sum + offset, data_json.modellist[model_count].line_locationy_1 + 0.75, 20));
+						points.push(new THREE.Vector3(-data_json.modellist[model_count].line_locationx_1 - sum + offset, data_json.modellist[model_count].line_locationy_1 - 0.75, 20));
+					}
+					material[0] = new THREE.LineBasicMaterial({ color: 0xff00ff });
+					const geometry = new THREE.BufferGeometry().setFromPoints(points);
+					const line = new THREE.Line(geometry, material[0]);
+					scene.add(line);
+					Right_eye_group.add(line);
+					scene.add(Right_eye_group);
+				}
+				for (let i = 0; i < 5; i++) {
+					const points = [];
+					if (i == 0) {
+						points.push(new THREE.Vector3(0 + offset, data_json.modellist[model_count].line_locationy_2, 20));
+						points.push(new THREE.Vector3(-1.5 + offset, data_json.modellist[model_count].line_locationy_2, 20));
+					}
+					else if (i == 1) {
+						sum = Y_range;
+						points.push(new THREE.Vector3(0 + offset, data_json.modellist[model_count].line_locationy_2 + sum, 20));
+						points.push(new THREE.Vector3(-1.5 + offset, data_json.modellist[model_count].line_locationy_2 + sum, 20));
+					}
+					else {
+						sum = sum + Y_range;
+						points.push(new THREE.Vector3(0 + offset, data_json.modellist[model_count].line_locationy_2 + sum, 20));
+						points.push(new THREE.Vector3(-1.5 + offset, data_json.modellist[model_count].line_locationy_2 + sum, 20));
+					}
+					material[1] = new THREE.LineBasicMaterial({ color: 0xff6a00 });
+					const geometry = new THREE.BufferGeometry().setFromPoints(points);
+					const line = new THREE.Line(geometry, material[1]);
+					Right_eye_group.add(line);
+					scene.add(Right_eye_group);
+				}
+			}
+		}
+		function Init_eyeangle() {
+			X_Right_neg_angle = data_json.modellist[model_count].X_Right_neg_angle;
+			X_Left_neg_angle = data_json.modellist[model_count].X_Left_neg_angle;
+			X_Right_pos_angle = data_json.modellist[model_count].X_Right_pos_angle;
+			X_Left_pos_angle = data_json.modellist[model_count].X_Left_pos_angle;
+			Y_Right_neg_angle = data_json.modellist[model_count].Y_Right_neg_angle;
+			Y_Left_neg_angle = data_json.modellist[model_count].Y_Left_neg_angle;
+			Y_Right_pos_angle = data_json.modellist[model_count].Y_Right_pos_angle;
+			Y_Left_pos_angle = data_json.modellist[model_count].Y_Left_pos_angle;
+		}
+		function save_eyeangle() {
+			data_json.modellist[model_count].X_Right_neg_angle = X_Right_neg_angle;
+			data_json.modellist[model_count].X_Left_neg_angle = X_Left_neg_angle;
+			data_json.modellist[model_count].X_Right_pos_angle = X_Right_pos_angle;
+			data_json.modellist[model_count].X_Left_pos_angle = X_Left_pos_angle;
+			data_json.modellist[model_count].Y_Right_neg_angle = Y_Right_neg_angle;
+			data_json.modellist[model_count].Y_Left_neg_angle = Y_Left_neg_angle;
+			data_json.modellist[model_count].Y_Right_pos_angle = Y_Right_pos_angle;
+			data_json.modellist[model_count].Y_Left_pos_angle = Y_Left_pos_angle;
+		}
+		function updatecamera() {
+			var eyepos = new THREE.Vector3(
+				(data_json.modellist[model_count].line_locationx_4 - data_json.modellist[model_count].line_locationx_1) / 2 + data_json.modellist[model_count].line_locationx_1
+				, (data_json.modellist[model_count].line_locationy_3 - data_json.modellist[model_count].line_locationy_2) / 2 + data_json.modellist[model_count].line_locationy_2
+				, 30);
+			eyeoffset = -eyepos.x;
+			camera.position.x = -eyepos.x;
+			camera.position.y = eyepos.y;
+			camera.zoom = 40;
+			camera.updateProjectionMatrix();
+			camera2.position.y = eyepos.y;
+			camera2.zoom = 10;
+			camera2.updateProjectionMatrix();
+			camera3.position.x = 5;
+			camera3.position.y = eyepos.y;
+			camera3.zoom = 10;
+			camera3.updateProjectionMatrix();
+			camera4.position.x = 10;
+			camera4.position.y = eyepos.y;
+			camera4.zoom = 10;
+			camera4.updateProjectionMatrix();
+			camera5.position.x = 15;
+			camera5.position.y = eyepos.y;
+			camera5.zoom = 10;
+			camera5.updateProjectionMatrix();
+		}
+	</script>
+
+</body>
+
+</html>

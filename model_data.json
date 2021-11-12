@@ -1,0 +1,61 @@
+{
+  "modellist": [
+    {
+      "location": "models/mmd/るいのれ式物述有栖_配布用フォルダ/物述有栖.pmx",
+      "line_locationx_1": 0.3109258993802275,
+      "line_locationy_1": 4.5365658528737227,
+      "line_locationx_2": 0.5558850701326470,
+      "line_locationy_2": 4.3232133248634309,
+      "line_locationx_3": 0.49492859650701326,
+      "line_locationy_3": 4.738630562020486,
+      "line_locationx_4": 0.7793990958664835,
+      "line_locationy_4": 4.5367499238063571,
+      "X_Right_neg_angle": -14.8,
+      "X_Left_neg_angle": -14.8,
+      "X_Right_pos_angle": 16.7,
+      "X_Left_pos_angle": 16.7,
+      "Y_Right_neg_angle": -10.2,
+      "Y_Left_neg_angle": -21.2,
+      "Y_Right_pos_angle": 21.2,
+      "Y_Left_pos_angle": 10.2
+    },
+    {
+      "location": "models/mmd/kizunaai/kizunaai.pmx",
+      "line_locationx_1": 0.25786984704036381,
+      "line_locationy_1": 8.2177496157451802,
+      "line_locationx_2": 0.5062171965991585,
+      "line_locationy_2": 8.0100413071208097,
+      "line_locationx_3": 0.4599759192845716,
+      "line_locationy_3": 8.402291269687801,
+      "line_locationx_4": 0.726265867452779,
+      "line_locationy_4": 8.222886157451802,
+      "X_Right_neg_angle": -8.4,
+      "X_Left_neg_angle": -8.4,
+      "X_Right_pos_angle": 11.4,
+      "X_Left_pos_angle": 11.4,
+      "Y_Right_neg_angle": -8,
+      "Y_Left_neg_angle": -12.6,
+      "Y_Right_pos_angle": 12.6,
+      "Y_Left_pos_angle": 8
+    },
+    {
+      "location": "models/mmd/『天宮こころ(Kokoro Amamiya)』/『天宮こころ(Kokoro Amamiya)』.pmx",
+      "line_locationx_1": 0.29399308505468924,
+      "line_locationy_1": 5.48307535446416555,
+      "line_locationx_2": 0.5242789232953308,
+      "line_locationy_2": 5.3403082451895217,
+      "line_locationx_3": 0.5276650957151114,
+      "line_locationy_3": 5.580641254821955,
+      "line_locationx_4": 0.757535486847301,
+      "line_locationy_4": 5.4757470619916555,
+      "X_Right_neg_angle": -17.9,
+      "X_Left_neg_angle": -17.9,
+      "X_Right_pos_angle": 14.2,
+      "X_Left_pos_angle": 14.2,
+      "Y_Right_neg_angle": -10.9,
+      "Y_Left_neg_angle": -16.4,
+      "Y_Right_pos_angle": 16.4,
+      "Y_Left_pos_angle": 10.9
+    }
+  ]
+}
